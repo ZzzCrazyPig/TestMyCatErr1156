@@ -1,0 +1,4 @@
+[select * from employee where id = 1]
+[select id,name from employee limit 2]
+[select * from employee limit 5]
+[select id,name,address from employee limit 10]

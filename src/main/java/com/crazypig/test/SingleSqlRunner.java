@@ -1,18 +1,17 @@
-package com.test;
+package com.crazypig.test;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
+
+import javax.sql.DataSource;
 
 import org.apache.log4j.Logger;
 
@@ -26,7 +25,7 @@ public class SingleSqlRunner implements Runnable {
 		try {
 			readRandomSqlFromFile();
 		} catch (IOException e) {
-			e.printStackTrace();
+		    logger.error(e.getMessage(), e);
 		}
 	}
 	
@@ -41,60 +40,45 @@ public class SingleSqlRunner implements Runnable {
 		reader.close();
 	}
 	
-	private CountDownLatch cdl;
-	private String url;
-	private String user;
-	private String password;
-	private ExecutorService executor;
+	private DataSource dataSource;
 	
-	public SingleSqlRunner(CountDownLatch cdl, String url, String user, String password, ExecutorService executor) {
-		this.cdl = cdl;
-		this.url = url;
-		this.user = user;
-		this.password = password;
-		this.executor = executor;
+	public SingleSqlRunner(DataSource ds) {
+		this.dataSource = ds;
 	}
 
 	@Override
 	public void run() {
-		try {
-			this.cdl.await();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
 		Connection conn = null;
 		String sql = getRandomSql();
 		try {
-			conn = DriverManager.getConnection(url, user, password);
+			conn = dataSource.getConnection();
+			conn.setAutoCommit(false);
 			Statement stmt = conn.createStatement();
-			// logger.info("execute sql : " + sql);
+			 logger.debug("execute sql : " + sql);
 			stmt.execute(sql);
+			conn.commit();
 			stmt.close();
 		} catch (SQLException e) {
-//			e.printStackTrace();
-			logSQLEx(sql, e);
-			if(e.getErrorCode() == 1156) {
-				executor.shutdownNow();
-			}
+		    logSQLEx(sql, e);
 		} finally {
-			if(conn != null) {
+			if (conn != null) {
 				try {
 					conn.close();
 				} catch (SQLException e) {
-//					e.printStackTrace();
+				    // ignore
 				}
 			}
 		}
 	}
 	
 	private void logSQLEx(String sql, SQLException e) {
-		StringBuffer sb = new StringBuffer();
-		sb.append("execute sql : " + sql + "\r\n");
-		sb.append("errno:" + e.getErrorCode())
-				.append("(" + e.getSQLState() + ")")
-				.append(",errMsg:" + e.getMessage() + "\r\n")
-				.append(e.toString());
-		logger.error(sb.toString());
+	    StringBuffer sb = new StringBuffer();
+	    sb.append("execute sql : " + sql + "\r\n");
+	    sb.append("errno:" + e.getErrorCode())
+	            .append("(" + e.getSQLState() + ")")
+	            .append(",errMsg:" + e.getMessage() + "\r\n")
+	            .append(e.toString());
+	    logger.error(sb.toString());
 	}
 	
 	/**
@@ -102,7 +86,7 @@ public class SingleSqlRunner implements Runnable {
 	 * @return
 	 */
 	private String getRandomSql() {
-		Random random = new Random();
+		Random random = new Random(System.currentTimeMillis());
 		int size = randomSqlList.size();
 		int randIndex = random.nextInt(size);
 		return randomSqlList.get(randIndex);
